@@ -16,6 +16,7 @@
 
 from typing import Any
 import csv
+import math
 import random
 import sys
 from freecad_scripts.libs import FreeCAD, Units, GmshTools, FemToolsCcx
@@ -119,9 +120,21 @@ class PressureVessel(object):
         obj.setDatum(param, Units.Quantity(
             value * 1e3, Units.Unit('mm')))
 
+    def sketch_set_angle(self, param: str, value: float):
+        """
+        Sets a length constraint of the sketch object in radians. This method
+        may throw an exception if an internal constraint cannot be satisfied.
+        """
+        obj = self.doc.getObject('Sketch')
+        obj.setDatum(param, Units.Quantity(value, Units.Unit('rad')))
+
     def sketch_get_length(self, param: str) -> float:
         obj = self.doc.getObject('Sketch')
         return float(obj.getDatum(param).getValueAs('mm')) * 1e-3
+
+    def sketch_get_angle(self, param: str) -> float:
+        obj = self.doc.getObject('Sketch')
+        return float(obj.getDatum(param).getValueAs('rad'))
 
     def set_pressure(self, value: float):
         """
@@ -394,26 +407,43 @@ class PressureVessel(object):
 
     def study_random(self, count: int, output: str):
         writer = self.csv_open_output(output)
-        for _ in range(count):
-            # set sketch lengths
-            for name in self.sketch_params:
-                if 'thickness' in name:
-                    value = random.uniform(0.001, 0.01)
-                elif 'length' in name:
-                    value = random.uniform(0.0, 2.0)
-                elif 'radius' in name:
-                    value = random.uniform(0.1, 1.0)
-                else:
-                    value = random.uniform(0.0, 1.0)
-                print("setting", name, "=", value)
-                self.sketch_set_length(name, value)
+        while count > 0:
+            try:
+                # set sketch lengths
+                for name in self.sketch_params:
+                    if 'thickness' in name:
+                        value = random.uniform(0.005, 0.02)
+                        print("setting", name, "=", value)
+                        self.sketch_set_length(name, value)
+                    elif 'length' in name:
+                        value = random.uniform(0.0, 2.0)
+                        print("setting", name, "=", value)
+                        self.sketch_set_length(name, value)
+                    elif 'radius' in name:
+                        value = random.uniform(0.1, 1.0)
+                        print("setting", name, "=", value)
+                        self.sketch_set_length(name, value)
+                    elif 'angle' in name:
+                        value = random.uniform(0.0, 0.5 * math.pi)
+                        print("setting", name, "=", value)
+                        self.sketch_set_angle(name, value)
+                    else:
+                        value = random.uniform(0.0, 1.0)
+                        print("setting", name, "=", value)
+                        self.sketch_set_length(name, value)
 
-            self.recompute()
-            mesh_len = 0.04 * (self.get_body_volume() ** 0.333)
-            print("setting mesh_len =", mesh_len)
-            self.set_mesh_length(mesh_len)
+                self.recompute()
+                mesh_len = 0.04 * (self.get_body_volume() ** 0.333)
+                print("setting mesh_len =", mesh_len)
+                self.set_mesh_length(mesh_len)
+            except ValueError:
+                # we just skip bad combinations for now
+                print("failed constraints")
+                continue
+
             self.run_analysis()
             self.csv_write_row(writer)
+            count -= 1
         self.csv_close_output(writer)
 
 

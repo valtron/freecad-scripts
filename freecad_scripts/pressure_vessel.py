@@ -63,19 +63,26 @@ class PressureVessel(object):
         for c in obj.Constraints:
             if not c.Name:
                 continue
-            print("  {} = {} m".format(c.Name, self.sketch_get_length(c.Name)))
+            elif 'angle' in c.Name:
+                print("  {} = {} rad".format(
+                    c.Name, self.sketch_get_angle(c.Name)))
+            else:
+                print("  {} = {} m".format(
+                    c.Name, self.sketch_get_length(c.Name)))
 
         print("Body properties:")
         print("  body_area = {:.6f} m^2".format(self.get_body_area()))
         print("  body_volume = {:.9f} m^3".format(self.get_body_volume()))
         print("  body_mass = {:.3f} kg".format(self.get_body_mass()))
+        print("  outer_length = {:.9f} m".format(self.get_outer_length()))
+        print("  outer_diameter = {:.9f} m".format(self.get_outer_diameter()))
         print("  outer_area = {:.6f} m^2".format(self.get_outer_area()))
         print("  outer_volume = {:.9f} m^3".format(self.get_outer_volume()))
         print("  inner_area = {:.6f} m^2".format(self.get_inner_area()))
         print("  inner_volume = {:.9f} m^3".format(self.get_inner_volume()))
 
         print("FEM parameters:")
-        print("  pressure =", self.get_pressure(), "MPa")
+        print("  test_pressure =", self.get_test_pressure(), "MPa")
         print("  mesh_length =", self.get_mesh_length(), "m")
 
         print("Material parameters:")
@@ -101,7 +108,10 @@ class PressureVessel(object):
                 self.get_tresca_stress()))
             print("  max_displacement = {} m".format(
                 self.get_max_displacement()))
-            print("  has_failed =", self.get_has_failed())
+            print("  structural_failure =",
+                  self.get_structural_failure())
+            print("  maximum_pressure = {} MPa".format(
+                self.get_maximum_pressure()))
         else:
             print("FEM Results: none")
 
@@ -136,14 +146,14 @@ class PressureVessel(object):
         obj = self.doc.getObject('Sketch')
         return float(obj.getDatum(param).getValueAs('rad'))
 
-    def set_pressure(self, value: float):
+    def set_test_pressure(self, value: float):
         """
         Sets the outside pressure acting on the vessel in mega pascals.
         """
         obj = self.doc.getObject('ConstraintPressure')
         obj.Pressure = float(value)
 
-    def get_pressure(self) -> float:
+    def get_test_pressure(self) -> float:
         obj = self.doc.getObject('ConstraintPressure')
         return float(obj.Pressure)
 
@@ -235,12 +245,33 @@ class PressureVessel(object):
         return self.get_body_volume() * self.get_density()
 
     def get_outer_area(self):
+        """
+        Returns the outer area in square meters.
+        """
         obj = self.doc.getObject('Body')
         return obj.Shape.OuterShell.Area * 1e-6
 
     def get_outer_volume(self):
+        """
+        Returns the outer area in cubic meters.
+        """
         obj = self.doc.getObject('Body')
         return obj.Shape.OuterShell.Volume * 1e-9
+
+    def get_outer_length(self):
+        """
+        Returns the outer length (along the x-axis) in meters.
+        """
+        obj = self.doc.getObject('Body')
+        return obj.Shape.BoundBox.XLength * 1e-3
+
+    def get_outer_diameter(self):
+        """
+        Returns the outer diameter (along maximum of the y and z-axis diameter)
+        in meters.
+        """
+        obj = self.doc.getObject('Body')
+        return max(obj.Shape.BoundBox.YLength, obj.Shape.BoundBox.ZLength) * 1e-3
 
     def get_inner_area(self):
         obj = self.doc.getObject('Body')
@@ -299,7 +330,8 @@ class PressureVessel(object):
         obj = self.doc.getObject('CCX_Results')
         assert obj.ResultType == 'Fem::ResultMechanical'
         if self.debug:
-            print("vonMises stress: {:.2f} MPa".format(max(obj.vonMises)))
+            print("vonMises stress: {:.2f} MPa".format(
+                self.get_vonmises_stress()))
 
     def has_mesh_properties(self):
         obj = self.doc.getObject('FEMMeshGmsh').FemMesh
@@ -346,11 +378,17 @@ class PressureVessel(object):
         obj = self.doc.getObject('CCX_Results')
         return max(obj.DisplacementLengths) * 1e-3
 
-    def get_has_failed(self) -> bool:
+    def get_structural_failure(self) -> bool:
         """
         Returns if the maximum vonMises stress is larger than the tensile strength.
         """
         return self.get_vonmises_stress() >= self.get_tensile_strength()
+
+    def get_maximum_pressure(self) -> float:
+        """
+        Returns the maximum pressure the vessel can withstand without deformation.
+        """
+        return self.get_test_pressure() * self.get_tensile_strength() / self.get_vonmises_stress()
 
     def set(self, name: str, value: Any):
         """
@@ -384,11 +422,14 @@ class PressureVessel(object):
 
         fieldnames = list(self.sketch_params)
         fieldnames.extend([
-            'pressure', 'mesh_length',
+            'test_pressure', 'mesh_length',
             'youngs_modulus', 'poisson_ratio', 'tensile_strength', 'density',
-            'body_area', 'body_volume', 'body_mass', 'outer_area', 'outer_volume', 'inner_area', 'inner_volume',
+            'body_area', 'body_volume', 'body_mass',
+            'outer_length', 'outer_diameter', 'outer_area', 'outer_volume',
+            'inner_area', 'inner_volume',
             'node_count', 'edge_count', 'face_count', 'volume_count',
-            'vonmises_stress', 'tresca_stress', 'max_displacement', 'has_failed'
+            'vonmises_stress', 'tresca_stress', 'max_displacement',
+            'structural_failure', 'maximum_pressure'
         ])
 
         writer = csv.DictWriter(file, fieldnames)
@@ -400,6 +441,10 @@ class PressureVessel(object):
     def csv_write_row(self, writer: csv.DictWriter):
         row = {name: self.get(name) for name in writer.fieldnames}
         writer.writerow(row)
+
+    def csv_flush_output(self, writer: csv.DictWriter):
+        if hasattr(writer, 'file'):
+            writer.file.flush()
 
     def csv_close_output(self, writer: csv.DictWriter):
         if hasattr(writer, 'file'):
@@ -433,7 +478,7 @@ class PressureVessel(object):
                         self.sketch_set_length(name, value)
 
                 self.recompute()
-                mesh_len = 0.04 * (self.get_body_volume() ** 0.333)
+                mesh_len = 0.1 * (self.get_body_volume() ** 0.333)
                 print("setting mesh_len =", mesh_len)
                 self.set_mesh_length(mesh_len)
             except ValueError:

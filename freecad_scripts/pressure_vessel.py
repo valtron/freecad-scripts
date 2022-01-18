@@ -18,6 +18,7 @@ from typing import Any
 import csv
 import math
 import random
+import re
 import sys
 from freecad_scripts.libs import FreeCAD, Units, GmshTools, FemToolsCcx
 
@@ -292,6 +293,11 @@ class PressureVessel(object):
         if self.doc.getObject('ccx_dat_file'):
             self.doc.removeObject('ccx_dat_file')
 
+    RE_MESH_WARNINGS = re.compile(
+        "^Warning :\s*(\d+) warnings?$", re.MULTILINE)
+    RE_MESH_ERRORS = re.compile(
+        "^Warning :\s*(\d+) errors?$", re.MULTILINE)
+
     def run_analysis(self):
         """
         Set the various parameters, then call this method and query the results.
@@ -301,16 +307,27 @@ class PressureVessel(object):
 
         if self.debug:
             print("Running GMSH mesher ...", end=' ', flush=True)
+        self.mesh_warnings = 0
+        self.mesh_errors = 0
         mesher = GmshTools(self.doc.getObject('FEMMeshGmsh'))
         err = mesher.create_mesh()
-        if err:
-            raise ValueError(err)
+        if isinstance(err, str):
+            match = PressureVessel.RE_MESH_WARNINGS.search(err)
+            self.mesh_warnings = int(match.group(1)) if match else 1e99
+            if not match:
+                print(err)
+            match = PressureVessel.RE_MESH_ERRORS.search(err)
+            self.mesh_errors = int(match.group(1)) if match else 1e99
+        elif err:
+            raise err
         obj = self.doc.getObject('FEMMeshGmsh').FemMesh
         if self.debug:
             print(obj.NodeCount, "nodes,",
                   obj.EdgeCount, "edges,",
                   obj.FaceCount, "faces,",
-                  obj.VolumeCount, "volumes")
+                  obj.VolumeCount, "volumes,",
+                  self.mesh_errors, "mesh errors,",
+                  self.mesh_warnings, "mesh warnings")
 
         if self.debug:
             print("Running FEM analysis ...", end=' ', flush=True)
@@ -408,7 +425,12 @@ class PressureVessel(object):
         with set_ if you do not want it to be a parameter.
         """
         if name in self.sketch_params:
-            return self.sketch_get_length(name)
+            if 'angle' in name:
+                return self.sketch_get_angle(name)
+            else:
+                return self.sketch_get_length(name)
+        elif hasattr(self, name):
+            return getattr(self, name)
         elif hasattr(self, 'get_' + name):
             return getattr(self, 'get_' + name)()
         else:
@@ -428,6 +450,7 @@ class PressureVessel(object):
             'outer_length', 'outer_diameter', 'outer_area', 'outer_volume',
             'inner_area', 'inner_volume',
             'node_count', 'edge_count', 'face_count', 'volume_count',
+            'mesh_warnings', 'mesh_errors',
             'vonmises_stress', 'tresca_stress', 'max_displacement',
             'structural_failure', 'maximum_pressure'
         ])
@@ -486,7 +509,12 @@ class PressureVessel(object):
                 print("failed constraints")
                 continue
 
-            self.run_analysis()
+            try:
+                self.run_analysis()
+            except RuntimeError:
+                print("failed analysis")
+                continue
+
             self.csv_write_row(writer)
             count -= 1
         self.csv_close_output(writer)

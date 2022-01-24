@@ -311,7 +311,7 @@ class PressureVessel(object):
         self.mesh_errors = 0
         mesher = GmshTools(self.doc.getObject('FEMMeshGmsh'))
         err = mesher.create_mesh()
-        if isinstance(err, str):
+        if err and isinstance(err, str):
             match = PressureVessel.RE_MESH_WARNINGS.search(err)
             self.mesh_warnings = int(match.group(1)) if match else 1e99
             if not match:
@@ -540,6 +540,7 @@ def run(args=None):
     if args.study == 'random':
         vessel.study_random(args.count, args.output)
     else:
+        vessel.print_info()
         vessel.run_analysis()
         vessel.print_info()
 

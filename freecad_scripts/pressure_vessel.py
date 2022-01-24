@@ -222,7 +222,11 @@ class PressureVessel(object):
         obj = self.doc.getObject('MaterialSolid')
         return float(Units.Quantity(obj.Material['Density']).getValueAs('kg/m^3'))
 
+    def disable_recompute(self):
+        self.doc.RecomputesFrozen = True
+
     def recompute(self):
+        self.doc.RecomputesFrozen = False
         self.doc.recompute()
 
     def get_body_area(self):
@@ -303,7 +307,7 @@ class PressureVessel(object):
         Set the various parameters, then call this method and query the results.
         """
         self.clean()
-        self.doc.recompute()
+        self.recompute()
 
         if self.debug:
             print("Running GMSH mesher ...", end=' ', flush=True)
@@ -477,6 +481,7 @@ class PressureVessel(object):
         writer = self.csv_open_output(output)
         while count > 0:
             try:
+                self.disable_recompute()
                 # set sketch lengths
                 for name in self.sketch_params:
                     if 'thickness' in name:
@@ -504,9 +509,9 @@ class PressureVessel(object):
                 mesh_len = 0.1 * (self.get_body_volume() ** 0.333)
                 print("setting mesh_len =", mesh_len)
                 self.set_mesh_length(mesh_len)
-            except ValueError:
+            except ValueError as err:
                 # we just skip bad combinations for now
-                print("failed constraints")
+                print("failed constraints:", err)
                 continue
 
             try:

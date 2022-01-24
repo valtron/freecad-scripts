@@ -20,6 +20,9 @@ setup(
     name='freecad-scripts',
     version='0.1',
     packages=['freecad_scripts'],
+    package_data={
+        'freecad_scripts': ['models'],
+    },
     license='GPL 3',
     description="FreeCAD scripting and analysis",
     python_requires='>3.6',

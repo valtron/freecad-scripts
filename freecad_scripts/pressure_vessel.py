@@ -45,6 +45,9 @@ class PressureVessel(object):
         if self.doc.getObject('CCX_Results'):
             print("WARNING: remove the CCX results from the model to save space")
 
+        self.mesh_warnings = 0
+        self.mesh_errors = 0
+
         self.sketch_params = []
         obj = self.doc.getObject('Sketch')
         for c in obj.Constraints:
@@ -98,6 +101,8 @@ class PressureVessel(object):
             print("  edge_count =", self.get_edge_count())
             print("  face_count =", self.get_face_count())
             print("  volume_count =", self.get_volume_count())
+            print("  mesh_warnings =", self.mesh_warnings)
+            print("  mesh_errors =", self.mesh_errors)
         else:
             print("Mesh properties: none")
 
@@ -226,6 +231,10 @@ class PressureVessel(object):
         self.doc.RecomputesFrozen = True
 
     def recompute(self):
+        """
+        Recomputes the body parameters.
+        """
+
         self.doc.RecomputesFrozen = False
         self.doc.recompute()
 
@@ -233,6 +242,7 @@ class PressureVessel(object):
         """
         Returns the body volume in square meters.
         """
+        assert not self.doc.RecomputesFrozen
         obj = self.doc.getObject('Body')
         return obj.Shape.Area * 1e-6
 
@@ -240,6 +250,7 @@ class PressureVessel(object):
         """
         Returns the body volume in cubic meters.
         """
+        assert not self.doc.RecomputesFrozen
         obj = self.doc.getObject('Body')
         return obj.Shape.Volume * 1e-9
 
@@ -253,6 +264,7 @@ class PressureVessel(object):
         """
         Returns the outer area in square meters.
         """
+        assert not self.doc.RecomputesFrozen
         obj = self.doc.getObject('Body')
         return obj.Shape.OuterShell.Area * 1e-6
 
@@ -260,6 +272,7 @@ class PressureVessel(object):
         """
         Returns the outer area in cubic meters.
         """
+        assert not self.doc.RecomputesFrozen
         obj = self.doc.getObject('Body')
         return obj.Shape.OuterShell.Volume * 1e-9
 
@@ -267,6 +280,7 @@ class PressureVessel(object):
         """
         Returns the outer length (along the x-axis) in meters.
         """
+        assert not self.doc.RecomputesFrozen
         obj = self.doc.getObject('Body')
         return obj.Shape.BoundBox.XLength * 1e-3
 
@@ -275,25 +289,24 @@ class PressureVessel(object):
         Returns the outer diameter (along maximum of the y and z-axis diameter)
         in meters.
         """
+        assert not self.doc.RecomputesFrozen
         obj = self.doc.getObject('Body')
         return max(obj.Shape.BoundBox.YLength, obj.Shape.BoundBox.ZLength) * 1e-3
 
     def get_inner_area(self):
-        obj = self.doc.getObject('Body')
         return self.get_body_area() - self.get_outer_area()
 
     def get_inner_volume(self):
-        obj = self.doc.getObject('Body')
         return self.get_outer_volume() - self.get_body_volume()
 
     def clean(self):
         """
         Removes all temporary artifacts from the model.
         """
-        if self.doc.getObject('CCX_Results'):
-            self.doc.removeObject('CCX_Results')
         if self.doc.getObject('ResultMesh'):
             self.doc.removeObject('ResultMesh')
+        if self.doc.getObject('CCX_Results'):
+            self.doc.removeObject('CCX_Results')
         if self.doc.getObject('ccx_dat_file'):
             self.doc.removeObject('ccx_dat_file')
 
@@ -302,7 +315,7 @@ class PressureVessel(object):
     RE_MESH_ERRORS = re.compile(
         "^Warning :\s*(\d+) errors?$", re.MULTILINE)
 
-    def run_analysis(self):
+    def run_analysis(self, mesh_only=False):
         """
         Set the various parameters, then call this method and query the results.
         """
@@ -332,6 +345,9 @@ class PressureVessel(object):
                   obj.VolumeCount, "volumes,",
                   self.mesh_errors, "mesh errors,",
                   self.mesh_warnings, "mesh warnings")
+
+        if mesh_only:
+            return
 
         if self.debug:
             print("Running FEM analysis ...", end=' ', flush=True)

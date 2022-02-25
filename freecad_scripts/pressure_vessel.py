@@ -37,7 +37,8 @@ class PressureVessel(object):
         self.filename = filename
         self.debug = debug
 
-        print("Opening:", filename)
+        if self.debug:
+            print("Opening:", filename)
         self.doc = FreeCAD.open(filename)
 
         if self.doc.getObject('FEMMeshGmsh').FemMesh.NodeCount:

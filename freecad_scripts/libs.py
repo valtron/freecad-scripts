@@ -21,6 +21,7 @@ import sys
 freecad_libs = [
     '/usr/local/lib/FreeCAD.so',
     '/usr/lib/freecad-python3/lib/FreeCAD.so',
+    'c:/Program Files/FreeCAD 0.19/bin/FreeCAD.pyd',
 ]
 for lib in freecad_libs:
     if os.path.exists(lib):
@@ -37,6 +38,7 @@ from FreeCAD import Units                   # noqa
 femtools_libs = [
     '/usr/local/Mod/Fem/femtools',
     '/usr/share/freecad/Mod/Fem/femtools',
+    'c:/Program Files/FreeCAD 0.19/Mod/Fem/femtools',
 ]
 for lib in femtools_libs:
     if os.path.exists(lib):
